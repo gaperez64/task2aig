@@ -537,14 +537,45 @@ int encode() {
 }
 */
 
+void printHelp() {
+    fprintf(stderr, "Usage: task2aig [OPTION] total_tasks task_index deadline "
+                    "init_arrival max_exec_time max_arrival_time\n");
+    fprintf(stderr, "Create an AIG for a deterministic task system.\n");
+    fprintf(stderr, "  -h    print this message\n");
+    fprintf(stderr, "  -e    possible execution time, multiple allowed\n");
+    fprintf(stderr, "  -a    possible arrival time, multiple allowed\n");
+    return;
+}
+
+
 int main(int argc, char* argv[]) {
     int c;
-    while ((c = getopt(argc, argv, "hn:i:e:a:")) != -1) {
+    int notasks;
+    int index;
+    int deadline;
+    int init;
+    while ((c = getopt(argc, argv, "he:a:")) != -1) {
         switch (c) {
-            case 'n':
-                printf("option n with value %s\n", optarg);
+            case 'h':
+                printHelp();
+            case 'e':
+                exec = atoi(optarg);
+                
                 break;
+            case '?':  // getopt found an invalid option
+                return EXIT_FAILURE;
+            default:
+                assert(false);  // this should not be reachable
         }
+    }
+
+    // making sure we have no non-options
+    if (optind < argc) {
+        fprintf(stderr, "Found unexpected non-option arguments: ");
+        while (optind < argc)
+            fprintf(stderr, "%s ", argv[optind++]);
+        fprintf(stderr, "\n");
+        return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
 }
