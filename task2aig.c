@@ -1,20 +1,18 @@
 /**************************************************************************
- * Copyright (c) 2019- Guillermo A. Perez
+ * Copyright (c) 2020- Guillermo A. Perez
  * 
- * This file is part of HOATOOLS.
- * 
- * HOATOOLS is free software: you can redistribute it and/or modify
+ * TASK2AIG is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  * 
- * HOATOOLS is distributed in the hope that it will be useful,
+ * TASK2AIG is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  * 
  * You should have received a copy of the GNU General Public License
- * along with HOATOOLS. If not, see <http://www.gnu.org/licenses/>.
+ * along with TASK2AIG. If not, see <http://www.gnu.org/licenses/>.
  * 
  * Guillermo A. Perez
  * University of Antwerp
@@ -23,16 +21,16 @@
 
 #include <assert.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "aiger/aiger.h"
 
-#include "simplehoa.h"
-
 /* A red-black tree to keep track of all and gates
- * we create for the automaton's transition function
+ * we create for the transition function
  * Conventions:
  * (1) literals are positive or negative integers depending on whether they
  * are negated
@@ -299,114 +297,10 @@ static inline int or(AigTable* table, int op1, int op2) {
     return -1 * and(table, -1 * op1, -1 * op2);
 }
 
-static int label2aig(AigTable* aig, BTree* label, AliasList* aliases) {
-    assert(label != NULL);
-    switch (label->type) {
-        case NT_BOOL:
-            return label->id ? 1 : -1;  // 0 becomes -1 like this
-        case NT_AND:
-            return and(aig, label2aig(aig, label->left, aliases),
-                            label2aig(aig, label->right, aliases));
-        case NT_OR:
-            return or(aig, label2aig(aig, label->left, aliases),
-                           label2aig(aig, label->right, aliases));
-        case NT_NOT:
-            return -1 * label2aig(aig, label->left, aliases);
-        case NT_AP:
-            return label->id + 2;  // FIXME: make this a global constant instead?
-        case NT_ALIAS:
-            for (AliasList* a = aliases; a != NULL; a = a->next) {
-                if (strcmp(a->alias, label->alias) == 0)
-                    return label2aig(aig, a->labelExpr, aliases);
-            }
-            break;
-        default:
-            assert(false);  // all cases should be covered above
-    }
-    return -2;
-}
-
-/* Read the EHOA file, encode the automaton in and-inverter
+/* Encode the single-task system in and-inverter
  * graphs, then use A. Biere's AIGER to dump the graph
- */
-int main(int argc, char* argv[]) {
-    HoaData* data = malloc(sizeof(HoaData));
-    defaultsHoa(data);
-    int ret = parseHoa(stdin, data);
-    // 0 means everything was parsed correctly
-    if (ret != 0)
-        return ret;
-    // A few semantic checks! TODO: use checkParityGFG function instead
-    // (1) the automaton should be a parity one
-    if (strcmp(data->accNameID, "parity") != 0) {
-        fprintf(stderr, "Expected \"parity...\" automaton, found \"%s\" "
-                        "as automaton type\n", data->accNameID);
-        return 100;
-    }
-    bool foundOrd = false;
-    bool maxPriority;
-    bool foundRes = false;
-    short winRes;
-    for (StringList* param = data->accNameParameters; param != NULL;
-            param = param->next) {
-        if (strcmp(param->str, "max") == 0) {
-            maxPriority = true;
-            foundOrd = true;
-        }
-        if (strcmp(param->str, "min") == 0) {
-            maxPriority = false;
-            foundOrd = true;
-        }
-        if (strcmp(param->str, "even") == 0) {
-            winRes = 0;
-            foundRes = true;
-        }
-        if (strcmp(param->str, "odd") == 0) {
-            winRes = 1;
-            foundRes = true;
-        }
-    }
-    if (!foundOrd) {
-        fprintf(stderr, "Expected \"max\" or \"min\" in the acceptance name\n");
-        return 101;
-    }
-    if (!foundRes) {
-        fprintf(stderr, "Expected \"even\" or \"odd\" in the acceptance name\n");
-        return 102;
-    }
-    // (2) the automaton should be deterministic, complete, colored
-    bool det = false;
-    bool complete = false;
-    bool colored = false;
-    for (StringList* prop = data->properties; prop != NULL; prop = prop->next) {
-        if (strcmp(prop->str, "deterministic") == 0)
-            det = true;
-        if (strcmp(prop->str, "complete") == 0)
-            complete = true;
-        if (strcmp(prop->str, "colored") == 0)
-            colored = true;
-    }
-    if (!det) {
-        fprintf(stderr, "Expected a deterministic automaton, "
-                        "did not find \"deterministic\" in the properties\n");
-        return 200;
-    }
-    if (!complete) {
-        fprintf(stderr, "Expected a complete automaton, "
-                        "did not find \"complete\" in the properties\n");
-        return 201;
-    }
-    if (!colored) {
-        fprintf(stderr, "Expected one acceptance set per transition, "
-                        "did not find \"colored\" in the properties\n");
-        return 202;
-    }
-    // (3) the automaton should have a unique start state
-    if (data->start == NULL || data->start->next != NULL) {
-        fprintf(stderr, "Expected a unique start state\n");
-        return 300;
-    }
-
+ *
+int encode() {
     // We now encode the transition relation into our
     // "sorta unique" AIG symbol table
     AigTable andGates;
@@ -639,5 +533,18 @@ int main(int argc, char* argv[]) {
     aiger_reset(aig);
     deleteTree(andGates.root);
     deleteHoa(data);
+    return EXIT_SUCCESS;
+}
+*/
+
+int main(int argc, char* argv[]) {
+    int c;
+    while ((c = getopt(argc, argv, "hn:i:e:a:")) != -1) {
+        switch (c) {
+            case 'n':
+                printf("option n with value %s\n", optarg);
+                break;
+        }
+    }
     return EXIT_SUCCESS;
 }
