@@ -299,8 +299,24 @@ static inline int or(AigTable* table, int op1, int op2) {
 
 /* Encode the single-task system in and-inverter
  * graphs, then use A. Biere's AIGER to dump the graph
- *
-int encode() {
+ */
+void encodeTask(int notasks, int index, int deadline, int init,
+                int noExecTimes, int* exectimes,
+                int noArrivalTimes, int* arrivaltimes) {
+#ifndef NDEBUG
+    fprintf(stderr, "Number of tasks = %d\n", notasks);
+    fprintf(stderr, "Index of task = %d\n", index);
+    fprintf(stderr, "Deadline = %d\n", deadline);
+    fprintf(stderr, "Initial arrival = %d\n", init);
+    fprintf(stderr, "Possible execution times: ");
+    for (int i = 0; i < noExecTimes; i++)
+        fprintf(stderr, "%d ", exectimes[i]);
+    fprintf(stderr, "\nPossible arrival times: ");
+    for (int i = 0; i < noArrivalTimes; i++)
+        fprintf(stderr, "%d ", arrivaltimes[i]);
+    fprintf(stderr, "\n");
+#endif
+
     // We now encode the transition relation into our
     // "sorta unique" AIG symbol table
     AigTable andGates;
@@ -308,25 +324,23 @@ int encode() {
     andGates.nextVar = 2;
 
     // We need to reserve a few variables though
-    // (1) one per input + an extra input we will introduce
-    // (2) one per latch needed for the states + 2 extra that we will need to
-    // simulate eventual safety via safety + one per "good" acceptance set
-    int noInputs = data->noAPs + 1;
-    andGates.nextVar += noInputs;
-    // we need floor(lg(#states)) + 1 just for the states,
+    // (1) one per controllable input + 2 uncontrollable inputs
+    // (2) one per latch needed for the counters + 3 helpers
+    // we need floor(lg(notasks)) + 1 just for controllable inputs,
     // where lg is the logarithm base 2; but C only has
     // natural logarithms
-    int goodAccSets = (int) (ceil(data->noAccSets / 2.0));
-    int noLatches = (int) (log(data->noStates) / log(2.0)) + 3 + goodAccSets;
-    andGates.nextVar += noLatches;
+    int noInputs = (int) (log(notasks) / log(2.0)) + 1;
+    noInputs += 2;  // uncontrollable inputs
+    andGates.nextVar += noInputs;
+    // we will also have 2 counters encoded in binary and 3 helper latches
+    int noLatches = (int) (log(exectimes[noExecTimes - 1]) / log(2.0)) + 1;
+    noLatches += (int) (log(arrivaltimes[noArrivalTimes - 1]) / log(2.0)) + 1;
+    noLatches += 3;
 #ifndef NDEBUG
-    fprintf(stderr, "Reserved %d variables for %d inputs\n",
-            noInputs, noInputs);
-    fprintf(stderr, "Reserved %d variables for latches to encode %d states\n",
-            noLatches, data->noStates);
-    fprintf(stderr, "of them, %d are for good acceptance sets\n", goodAccSets);
+    fprintf(stderr, "Reserved %d inputs\n", noInputs);
+    fprintf(stderr, "Reserved %d latches\n", noLatches);
 #endif
-
+/*
     // We will traverse states, their transitions, bits set to 1 in the
     // successor via the transition, and add (i.e. logical or in place)
     // the transition
@@ -528,18 +542,16 @@ int encode() {
 
     // and dump the aig
     aiger_write_to_file(aig, aiger_ascii_mode, stdout);
-
-    // Free dynamic memory
-    aiger_reset(aig);
-    deleteTree(andGates.root);
-    deleteHoa(data);
-    return EXIT_SUCCESS;
-}
 */
+    // Free dynamic memory
+    //aiger_reset(aig);
+    deleteTree(andGates.root);
+    return;
+}
 
 void printHelp() {
-    fprintf(stderr, "Usage: task2aig [OPTION] total_tasks task_index deadline "
-                    "init_arrival max_exec_time max_arrival_time\n");
+    fprintf(stderr, "Usage: task2aig [OPTIONS]... TOTTASKS TASKINDEX DEADLINE "
+                    "INITARRIVAL MAXEXECTIME MAXARRIVALTIME\n");
     fprintf(stderr, "Create an AIG for a deterministic task system.\n");
     fprintf(stderr, "  -h    print this message\n");
     fprintf(stderr, "  -e    possible execution time, multiple allowed\n");
@@ -547,6 +559,10 @@ void printHelp() {
     return;
 }
 
+typedef struct SLIntList {
+    int val;
+    struct SLIntList* next;
+} SLIntList;
 
 int main(int argc, char* argv[]) {
     int c;
@@ -554,13 +570,59 @@ int main(int argc, char* argv[]) {
     int index;
     int deadline;
     int init;
+    int maxexec;
+    int maxarrival;
+    SLIntList* execTimes = NULL;
+    SLIntList* arrivalTimes = NULL;
+    int noExecTimes = 1;
+    int noArrivalTimes = 1;
+    int x;
     while ((c = getopt(argc, argv, "he:a:")) != -1) {
         switch (c) {
             case 'h':
                 printHelp();
+                break;
             case 'e':
-                exec = atoi(optarg);
-                
+                x = atoi(optarg);
+                if (execTimes == NULL || execTimes->val > x) {
+                    SLIntList* temp = execTimes;
+                    execTimes = malloc(sizeof(SLIntList));
+                    execTimes->next = temp;
+                    execTimes->val = atoi(optarg);
+                    noExecTimes++;
+                } else {
+                    SLIntList* item = execTimes;
+                    while (item->next != NULL && item->next->val <= x)
+                        item = item->next;
+                    if (item->val < x) {
+                        SLIntList* temp = item->next;
+                        item->next = malloc(sizeof(SLIntList));
+                        item->next->val = x;
+                        item->next->next = temp;
+                        noExecTimes++;
+                    }
+                }
+                break;
+            case 'a':
+                x = atoi(optarg);
+                if (arrivalTimes == NULL || arrivalTimes->val > x) {
+                    SLIntList* temp = arrivalTimes;
+                    arrivalTimes = malloc(sizeof(SLIntList));
+                    arrivalTimes->next = temp;
+                    arrivalTimes->val = atoi(optarg);
+                    noArrivalTimes++;
+                } else {
+                    SLIntList* item = arrivalTimes;
+                    while (item->next != NULL && item->next->val <= x)
+                        item = item->next;
+                    if (item->val < x) {
+                        SLIntList* temp = item->next;
+                        item->next = malloc(sizeof(SLIntList));
+                        item->next->val = x;
+                        item->next->next = temp;
+                        noArrivalTimes++;
+                    }
+                }
                 break;
             case '?':  // getopt found an invalid option
                 return EXIT_FAILURE;
@@ -569,13 +631,54 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // making sure we have no non-options
-    if (optind < argc) {
-        fprintf(stderr, "Found unexpected non-option arguments: ");
-        while (optind < argc)
-            fprintf(stderr, "%s ", argv[optind++]);
-        fprintf(stderr, "\n");
+    // making sure we have precisely 6 non-options
+    if (argc - optind < 6) {
+        fprintf(stderr, "Expected 6 positional arguments!");
         return EXIT_FAILURE;
+    } else {
+        notasks = atoi(argv[optind++]);
+        index = atoi(argv[optind++]);
+        deadline = atoi(argv[optind++]);
+        init = atoi(argv[optind++]);
+        maxexec = atoi(argv[optind++]);
+        maxarrival = atoi(argv[optind++]);
     }
+
+    // create arrays for time lists
+    int exectimes[noExecTimes];
+    SLIntList* item = execTimes;
+    for (int i = 0; i < noExecTimes - 1; i++) {
+        assert(item != NULL);
+        exectimes[i] = item->val;
+        item = item->next;
+    }
+    exectimes[noExecTimes - 1] = maxexec;
+    int arrivaltimes[noArrivalTimes];
+    item = arrivalTimes;
+    for (int i = 0; i < noArrivalTimes - 1; i++) {
+        assert(item != NULL);
+        arrivaltimes[i] = item->val;
+        item = item->next;
+    }
+    arrivaltimes[noArrivalTimes - 1] = maxarrival;
+
+    // get rid of dynamic memory
+    item = execTimes;
+    while (item != NULL) {
+        SLIntList* temp = item->next;
+        free(item);
+        item = temp;
+    }
+    item = arrivalTimes;
+    while (item != NULL) {
+        SLIntList* temp = item->next;
+        free(item);
+        item = temp;
+    }
+
+    // encode the task as an and-inverter graph
+    encodeTask(notasks, index, deadline, init,
+               noExecTimes, exectimes, noArrivalTimes, arrivaltimes);
+
     return EXIT_SUCCESS;
 }
