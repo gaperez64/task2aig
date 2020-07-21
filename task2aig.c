@@ -333,191 +333,202 @@ void encodeTask(int notasks, int index, int deadline, int init,
     noInputs += 2;  // uncontrollable inputs
     andGates.nextVar += noInputs;
     // we will also have 2 counters encoded in binary and 3 helper latches
-    int noLatches = (int) (log(exectimes[noExecTimes - 1]) / log(2.0)) + 1;
-    noLatches += (int) (log(arrivaltimes[noArrivalTimes - 1]) / log(2.0)) + 1;
-    noLatches += 3;
+    int noExecLatches = (int) (log(exectimes[noExecTimes - 1]) / log(2.0)) + 1;
+    int noArrivalLatches = (int) (log(arrivaltimes[noArrivalTimes - 1]) / log(2.0)) + 1;
+    int noLatches = noExecLatches + noArrivalLatches + 3;
+    andGates.nextVar += noLatches;
+    // we will be using all counter latches for the initialization countdown
+    assert((int) (log(init)/ log(2.0)) + 1 <= noLatches);
 #ifndef NDEBUG
     fprintf(stderr, "Reserved %d inputs\n", noInputs);
     fprintf(stderr, "Reserved %d latches\n", noLatches);
 #endif
-/*
-    // We will traverse states, their transitions, bits set to 1 in the
-    // successor via the transition, and add (i.e. logical or in place)
-    // the transition
-    // Step 1: set up state encodings
-    int statecode[data->noStates];
-    for (int i = 0; i < data->noStates; i++)
-        statecode[i] = 1;
-    // AIGER assumes 0 is the initial state, so we need to give the start
-    // state the right latch valuation
-    int start = data->start->i;
-    int nextId = 1;
-    int stateIds[data->noStates];
-    for (int src = 0; src < data->noStates; src++) {
-        // Step 1.1: create the encoding of the source state based on the
-        // binary encoding of its number
-        int mask = 1;
-        int curId;
-        if (src == start) {
-            curId = 0;
-        } else {
-            curId = nextId;
-            nextId++;
-        }
-        stateIds[src] = curId;
-        for (int latch = 0; latch < noLatches - 2 - goodAccSets; latch++) {
-            int latchlit = 2 + noInputs + latch;
-            if ((curId & mask) != mask)
-                latchlit *= -1;
-            statecode[src] = and(&andGates, statecode[src], latchlit);
+
+    // Step 1: set up choice decoder
+    int mask = 1;
+    int taskScheduled = 1;
+    for (int i = 0; i < noInputs - 2; i++) {
+        int inputvar = 2 + i;
+        if ((index & mask) == mask)
+            taskScheduled = and(&andGates, taskScheduled, inputvar);
+        else
+            taskScheduled = and(&andGates, taskScheduled, inputvar * -1);
+        mask = mask << 1;
+    }
+
+    // Step 2: set up initialization counter and logic for initialization
+    // latch
+    // 2.1 counter logic before initialization
+    int latchFunction[noLatches - 3];
+    for (int i = 0; i < noLatches - 3; i++) {
+        latchFunction[i] = -1;
+    }
+    // we set the bit to 1 if it is 0, all less significant bits are 1,
+    // and the tick_tock clock is set to 1; or if it is 1 and either
+    // the tick_tock clock is 0 or some less significant bit is not 1,
+    // additionally the initialization is not yet done
+    int rollingLSB = 1;
+    const int ticktockLatch = 2 + noInputs + noLatches - 3;
+    const int initdLatch = 2 + noInputs + noLatches - 1;
+    for (int i = 0; i < noLatches - 3; i++) {
+        int latchvar = 2 + noInputs + i;
+        int flip = and(&andGates, latchvar * -1,
+                       and(&andGates, ticktockLatch, rollingLSB));
+        int keep = and(&andGates, latchvar,
+                       or(&andGates, ticktockLatch * -1, rollingLSB * -1));
+        latchFunction[i] = or(&andGates, latchFunction[i],
+                              or(&andGates, flip, keep));
+        rollingLSB = and(&andGates, rollingLSB, latchvar);
+    }
+    // 2.1: logic for the initialization latch
+    mask = 1;
+    int isInitialized = 1;
+    for (int i = 0; i < noLatches - 3; i++) {
+        if ((init & mask) == mask)
+            isInitialized = and(&andGates, isInitialized, latchFunction[i]);
+        else
+            isInitialized = and(&andGates, isInitialized, latchFunction[i] * -1);
+        mask = mask << 1;
+    }
+    // if it is initialized already, keep it that way
+    isInitialized = or(&andGates, isInitialized, initdLatch);
+    // 2.3: we update pre-init counter logic to guard the updated with this
+    for (int i = 0; i < noLatches - 3; i++) {
+        latchFunction[i] = and(&andGates, latchFunction[i], isInitialized * -1);
+    }
+
+    // Step 3: Arrival time counter logic
+    // we set the bit to 1 if it is 0, all less significant bits are 1, the
+    // tick_tock clock is set to 1; or if it is 1 and
+    // either the tick_tock clock is 0 or some less significant bit is not 1
+    // NOTE: this is all guarded by initialization and non-arrival
+    int canArrive = -1;
+    for (int i = 0; i < noArrivalTimes; i++) {
+        int arrivalAllowed = 1;
+        mask = 1;
+        for (int j = noExecLatches; j < noExecLatches + noArrivalLatches; j++) {
+            int latchvar = 2 + noInputs + j;
+            if ((arrivaltimes[i] & mask) == mask)
+                arrivalAllowed = and(&andGates, arrivalAllowed, latchvar);
+            else
+                arrivalAllowed = and(&andGates, arrivalAllowed, latchvar * -1);
             mask = mask << 1;
         }
+        canArrive = or(&andGates, canArrive, arrivalAllowed);
     }
-    // Step 2: set up trivial predecessor and acceptance functions
-    int predecessors[noLatches];
-    for (int i = 0; i < noLatches; i++)
-        predecessors[i] = -1;
-    int acceptance[data->noAccSets];
-    for (int i = 0; i < data->noAccSets; i++)
-        acceptance[i] = -1;
-    // Step 3: traverse the list of successors to update the latter
-    for (StateList* src = data->states; src != NULL; src = src->next) {
-        bool labelled = false;
-        int labelCode;
-        if (src->label != NULL) {
-            labelCode = label2aig(&andGates, src->label, data->aliases);
-            labelled = true;
-        }
+    const int nextJobInput = noInputs - 1;
+    int newJob = and(&andGates, canArrive, nextJobInput);
+    newJob = and(&andGates, newJob, ticktockLatch * -1);
+    int guard = and(&andGates, initdLatch, newJob * -1);
+    // the guard is ready, we can set up the counter logic now
+    rollingLSB = 1;
+    for (int i = noExecLatches; i < noExecLatches + noArrivalLatches; i++) {
+        int latchvar = 2 + noInputs + i;
+        int flip = and(&andGates, latchvar * -1,
+                       and(&andGates, ticktockLatch, rollingLSB));
+        int keep = or(&andGates, ticktockLatch * -1, rollingLSB * -1);
+        keep = and(&andGates, latchvar, keep);
+        latchFunction[i] = or(&andGates, latchFunction[i],
+                              and(&andGates, guard,
+                                  or(&andGates, flip, keep)));
+        rollingLSB = and(&andGates, rollingLSB, latchvar);
+    }
 
-        for (TransList* trans = src->transitions; trans != NULL;
-                                                  trans = trans->next) {
-            if (!labelled) {
-                if (trans->label == NULL) {
-                    fprintf(stderr, "Cannot determine the label of a transition from state "
-                                    "%d\n", src->id);
-                    return 400;
-                }
-                labelCode = label2aig(&andGates, trans->label, data->aliases);
-            }
-            int noSuccessors = 0;
-            for (IntList* tgt = trans->successors; tgt != NULL;
-                                                   tgt = tgt->next) {
-                int transCode = and(&andGates,
-                                    labelCode,
-                                    statecode[src->id]);
-                int mask = 1;
-                for (int latch = 0; latch < noLatches - 2 - goodAccSets; latch++) {
-                    if ((stateIds[tgt->i] & mask) == mask) {
-                        // Step 3.1: for each latch which should be set to 1
-                        // for this successor, we update its predecessor
-                        // relation
-                        predecessors[latch] = or(&andGates, transCode,
-                                                 predecessors[latch]);
-                    }
-                    mask = mask << 1;
-                }
-                noSuccessors++;
-                // Step 3.2: we update the acceptance sets' functions based on
-                // the transition and its acceptance sets
-                IntList* acc = src->accSig;
-                if (src->accSig == NULL)
-                    acc = trans->accSig;
-                // one of the two should be non-NULL
-                // and there should be exactly one acceptance set!
-                assert(acc != NULL && acc->next == NULL);
-                acceptance[acc->i] = or(&andGates, acceptance[acc->i], transCode);
-            }
-            // since the automaton is supposedly deterministic, we should only
-            // see one successor per transition
-            assert(noSuccessors == 1);
+    // Step 4: Execution time counter logic
+    // we set the bit to 1 if it is 0, all less significant bits are 1, the
+    // tick_tock clock is set to 1, and the index is right; or if it is 1 and
+    // either the tick_tock clock is 0 or some less significant bit is not 1
+    // or if the index is not right; or everything is 1 already
+    // NOTE: this is all guarded by initialization, non-arrival
+    // and non-termination
+    int canTerminate = -1;
+    for (int i = 0; i < noExecTimes; i++) {
+        int termAllowed = 1;
+        mask = 1;
+        for (int j = 0; j < noExecLatches; j++) {
+            int latchvar = 2 + noInputs + j;
+            if ((exectimes[i] & mask) == mask)
+                termAllowed = and(&andGates, termAllowed, latchvar);
+            else
+                termAllowed = and(&andGates, termAllowed, latchvar * -1);
+            mask = mask << 1;
         }
+        canTerminate = or(&andGates, canTerminate, termAllowed);
     }
-    // Step 4: add logic regarding transitions of the sub-machine making sure
-    // the new reset signal is used precisely once
-    int resetInputVar = 2 + noInputs - 1;
-    int resetLatch0 = noLatches - 2 - goodAccSets;
-    int resetL0Var = 2 + noInputs + resetLatch0;
-    int resetLatch1 = noLatches - 1 - goodAccSets;
-    int resetL1Var = 2 + noInputs + resetLatch1;
-    // we move to accepting (i.e. ~resetLatch1 & resetLatch0) if
-    // we are at the initial state and read a reset input
-    int initialState = and(&andGates, -1 * resetL0Var, -1 * resetL1Var);
-    predecessors[resetLatch0] = or(&andGates, predecessors[resetLatch0],
-                                   and(&andGates, resetInputVar, initialState));
-    // or if we are already accepting and read no reset input
-    int acceptState = and(&andGates, -1 * resetL1Var, resetL0Var);
-    predecessors[resetLatch0] = or(&andGates, predecessors[resetLatch0],
-                                   and(&andGates, -1 * resetInputVar, acceptState));
-    // we move to losing (i.e. resetLatch1 & ~resetLatch0) if
-    // we are at the accepting state and read a reset input
-    predecessors[resetLatch1] = or(&andGates, predecessors[resetLatch1],
-                                   and(&andGates, resetInputVar, acceptState));
-    // or if we are already losing and read anything
-    int loseState = and(&andGates, resetL1Var, -1 * resetL0Var);
-    predecessors[resetLatch1] = or(&andGates, predecessors[resetLatch1],
-                                   loseState);
-    // Step 5: we prepare the logic for the justice conditions based on the type
-    // of parity condition
-    // NOTE: winRes = 1 for odd parity conditions, winRes = 0 otherwise
-    int safeResetLatch = noLatches - goodAccSets;
-    for (int p = 1 - winRes; p < data->noAccSets; p += 2) {
-        int trumpP = -1;
-        // NOTE: maxPriority = true iff we have a max priority condition
-        int q = maxPriority ? p + 1 : p - 1;
-        while (q >= 0 && q < data->noAccSets) {
-            trumpP = or(&andGates, trumpP, acceptance[q]);
-            q += maxPriority ? 2 : -2;
-        }
-        int safeResetVar = 2 + noInputs + safeResetLatch;
-        predecessors[safeResetLatch] = or(&andGates, safeResetVar,
-                                          and(&andGates,
-                                              acceptState,
-                                              trumpP));
-        safeResetLatch++;
+    const int endExecInput = noInputs - 2;
+    int endExec = and(&andGates, canTerminate, endExecInput);
+    endExec = and(&andGates, endExec, ticktockLatch * -1);
+    guard = and(&andGates, guard, endExec * -1);
+    // the guard is ready, we can set up the counter logic now
+    int allset = 1;
+    for (int i = 0; i < noExecLatches; i++) {
+        int latchvar = 2 + noInputs + i;
+        allset = and(&andGates, allset, latchvar);
+    }
+    rollingLSB = 1;
+    for (int i = 0; i < noExecLatches; i++) {
+        int latchvar = 2 + noInputs + i;
+        int flip = and(&andGates, latchvar * -1, taskScheduled);
+        flip = and(&andGates, flip,
+                   and(&andGates, ticktockLatch, rollingLSB));
+        int keep = or(&andGates, ticktockLatch * -1,
+                      or(&andGates, taskScheduled * -1, rollingLSB * -1));
+        keep = and(&andGates, latchvar, keep);
+        latchFunction[i] = or(&andGates, latchFunction[i],
+                              and(&andGates, guard,
+                                  or(&andGates, allset,
+                                     or(&andGates, flip, keep))));
+        rollingLSB = and(&andGates, rollingLSB, latchvar);
     }
 
 #ifndef NDEBUG
     recursivePrint(andGates.root, 0);
 #endif
 
-    // Step 6: Create and print the constructed AIG
+    // Step 5: Create and print the constructed AIG
     aiger* aig = aiger_init();
     // add inputs
     int lit = 2;
-    for (StringList* aps = data->aps; aps != NULL; aps = aps->next) {
-        aiger_add_input(aig, lit, aps->str);
+    char name[50];
+    for (int i = 0; i < noInputs - 2; i++) {
+        sprintf(name, "controllable_choicetask%d", i);
+        aiger_add_input(aig, lit, name);
         lit += 2;
     }
-    // add the extra input
-    aiger_add_input(aig, lit, "reset_safety");
+    aiger_add_input(aig, lit, "end_exec_early");
     lit += 2;
+    aiger_add_input(aig, lit, "next_job");
+    lit += 2;
+
     // add latches
-    for (int latch = 0; latch < noLatches - 2 - goodAccSets; latch++) {
-        aiger_add_latch(aig, lit, var2aiglit(predecessors[latch]), ""); 
+    for (int i = 0; i < noExecLatches; i++) {
+        sprintf(name, "exec_counter_latch%d", i);
+        aiger_add_latch(aig, lit, var2aiglit(latchFunction[i]), name);
         lit += 2;
     }
-    aiger_add_latch(aig, lit,
-                    var2aiglit(predecessors[noLatches - 2 - goodAccSets]),
-                    "reset_once_latch0");
-    lit += 2;
-    aiger_add_latch(aig, lit,
-                    var2aiglit(predecessors[noLatches - 1 - goodAccSets]),
-                    "reset_once_latch1");
-    lit += 2;
-    char latchName[50];
-    for (int latch = noLatches - goodAccSets; latch < noLatches; latch++) {
-        int localNo = latch - (noLatches - goodAccSets);
-        sprintf(latchName, "safe_with_1_reset%d", localNo);
-        aiger_add_latch(aig, lit, var2aiglit(predecessors[latch]), latchName);
+    for (int i = 0; i < noArrivalLatches; i++) {
+        sprintf(name, "arrival_counter_latch%d", i);
+        aiger_add_latch(aig, lit, var2aiglit(latchFunction[noExecLatches + i]), name);
         lit += 2;
     }
-    
+    // we add the latch to keep track of odd/even ticks
+    aiger_add_latch(aig, lit, lit + 1, "tick_tock");
+    lit += 2;
+    // we add the latch to remember whether the task was given CPU
+    aiger_add_latch(aig, lit, var2aiglit(taskScheduled), "task_scheduled");
+    lit += 2;
+    // we add the latch to keep track of whether we are initialized
+    aiger_add_latch(aig, lit, var2aiglit(isInitialized), "is_initialized");
+    lit += 2;
+
     // add and-gates
 #ifndef NDEBUG
     fprintf(stderr, "Dumping AND-gates into aiger structure\n");
 #endif
     dumpAiger(andGates.root, aig);
+/*
     // add fairness constraint for the extra input
+
     aiger_add_fairness(aig, var2aiglit(acceptState), "reset_safety_once");
     // add justice constraints
     safeResetLatch = noLatches - goodAccSets;
@@ -530,21 +541,20 @@ void encodeTask(int notasks, int index, int deadline, int init,
         aiger_add_justice(aig, 2, justice, justiceName);
         safeResetLatch++;
     }
-
+*/
 #ifndef NDEBUG
     fprintf(stderr, "AIG structure created, now checking it!\n");
     const char* msg = aiger_check(aig);
     if (msg) {
-        fprintf(stderr, msg);
-        return 500;
+        fprintf(stderr, "%s\n", msg);
     }
 #endif
 
     // and dump the aig
     aiger_write_to_file(aig, aiger_ascii_mode, stdout);
-*/
+
     // Free dynamic memory
-    //aiger_reset(aig);
+    aiger_reset(aig);
     deleteTree(andGates.root);
     return;
 }
@@ -563,6 +573,15 @@ typedef struct SLIntList {
     int val;
     struct SLIntList* next;
 } SLIntList;
+
+void deleteSLIntList(SLIntList* item) {
+    while (item != NULL) {
+        SLIntList* temp = item->next;
+        free(item);
+        item = temp;
+    }
+    return;
+}
 
 int main(int argc, char* argv[]) {
     int c;
@@ -625,6 +644,9 @@ int main(int argc, char* argv[]) {
                 }
                 break;
             case '?':  // getopt found an invalid option
+                // get rid of dynamic memory and exit
+                deleteSLIntList(execTimes);
+                deleteSLIntList(arrivalTimes);
                 return EXIT_FAILURE;
             default:
                 assert(false);  // this should not be reachable
@@ -632,8 +654,11 @@ int main(int argc, char* argv[]) {
     }
 
     // making sure we have precisely 6 non-options
-    if (argc - optind < 6) {
-        fprintf(stderr, "Expected 6 positional arguments!");
+    if (argc - optind != 6) {
+        fprintf(stderr, "Expected 6 positional arguments!\n");
+        // get rid of dynamic memory and exit
+        deleteSLIntList(execTimes);
+        deleteSLIntList(arrivalTimes);
         return EXIT_FAILURE;
     } else {
         notasks = atoi(argv[optind++]);
@@ -645,40 +670,30 @@ int main(int argc, char* argv[]) {
     }
 
     // create arrays for time lists
-    int exectimes[noExecTimes];
+    int execarray[noExecTimes];
     SLIntList* item = execTimes;
     for (int i = 0; i < noExecTimes - 1; i++) {
         assert(item != NULL);
-        exectimes[i] = item->val;
+        execarray[i] = item->val;
         item = item->next;
     }
-    exectimes[noExecTimes - 1] = maxexec;
-    int arrivaltimes[noArrivalTimes];
+    execarray[noExecTimes - 1] = maxexec;
+    int arrivalarray[noArrivalTimes];
     item = arrivalTimes;
     for (int i = 0; i < noArrivalTimes - 1; i++) {
         assert(item != NULL);
-        arrivaltimes[i] = item->val;
+        arrivalarray[i] = item->val;
         item = item->next;
     }
-    arrivaltimes[noArrivalTimes - 1] = maxarrival;
+    arrivalarray[noArrivalTimes - 1] = maxarrival;
 
     // get rid of dynamic memory
-    item = execTimes;
-    while (item != NULL) {
-        SLIntList* temp = item->next;
-        free(item);
-        item = temp;
-    }
-    item = arrivalTimes;
-    while (item != NULL) {
-        SLIntList* temp = item->next;
-        free(item);
-        item = temp;
-    }
+    deleteSLIntList(execTimes);
+    deleteSLIntList(arrivalTimes);
 
     // encode the task as an and-inverter graph
     encodeTask(notasks, index, deadline, init,
-               noExecTimes, exectimes, noArrivalTimes, arrivaltimes);
+               noExecTimes, execarray, noArrivalTimes, arrivalarray);
 
     return EXIT_SUCCESS;
 }
