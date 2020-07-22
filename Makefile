@@ -7,7 +7,7 @@ task2aig: task2aig.c aiger/aiger.c aiger/aiger.h
 	$(CC) $(CFLAGS) -lm -o task2aig aiger/aiger.c task2aig.c
 
 aigprod: aigprod.c aiger/aiger.c aiger/aiger.h
-	$(CC) $(DBGFLAGS) -o aigprod aiger/aiger.c aigprod.c
+	$(CC) $(CFLAGS) -o aigprod aiger/aiger.c aigprod.c
 
 .PHONY: clean all
 
