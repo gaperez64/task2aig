@@ -297,6 +297,19 @@ static inline int or(AigTable* table, int op1, int op2) {
     return -1 * and(table, -1 * op1, -1 * op2);
 }
 
+static inline int getBin(AigTable* table, int n, int start, int end) {
+    int mask = 1;
+    int ret = 1;
+    for (int var = start; var < end; var++) {
+        if ((n & mask) == mask)
+            ret = and(table, ret, var);
+        else
+            ret = and(table, ret, var * -1);
+        mask = mask << 1;
+    }
+    return ret;
+}
+
 /* Encode the single-task system in and-inverter
  * graphs, then use A. Biere's AIGER to dump the graph
  */
@@ -332,10 +345,12 @@ void encodeTask(int notasks, int index, int deadline, int init,
     int noInputs = (int) (log(notasks) / log(2.0)) + 1;
     noInputs += 2;  // uncontrollable inputs
     andGates.nextVar += noInputs;
-    // we will also have 2 counters encoded in binary and 3 helper latches
+    // we will also have 2 counters encoded in binary and 2 helper latches
     int noExecLatches = (int) (log(exectimes[noExecTimes - 1]) / log(2.0)) + 1;
-    int noArrivalLatches = (int) (log(arrivaltimes[noArrivalTimes - 1]) / log(2.0)) + 1;
-    int noLatches = noExecLatches + noArrivalLatches + 3;
+    // arrival times are never fully counted (i.e. the counter stays strictly
+    // below the max) so we try to reduce latches using that fact
+    int noArrivalLatches = (int) (log(arrivaltimes[noArrivalTimes - 1] - 1) / log(2.0)) + 1;
+    int noLatches = noExecLatches + noArrivalLatches + 2;
     andGates.nextVar += noLatches;
     // we will be using all counter latches for the initialization countdown
     assert((int) (log(init)/ log(2.0)) + 1 <= noLatches);
@@ -345,22 +360,13 @@ void encodeTask(int notasks, int index, int deadline, int init,
 #endif
 
     // Step 1: set up choice decoder
-    int mask = 1;
-    int taskScheduled = 1;
-    for (int i = 0; i < noInputs - 2; i++) {
-        int inputvar = 2 + i;
-        if ((index & mask) == mask)
-            taskScheduled = and(&andGates, taskScheduled, inputvar);
-        else
-            taskScheduled = and(&andGates, taskScheduled, inputvar * -1);
-        mask = mask << 1;
-    }
+    int taskScheduled = getBin(&andGates, index, 2, 2 + noInputs - 2);
 
     // Step 2: set up initialization counter and logic for initialization
     // latch
     // 2.1 counter logic before initialization
-    int latchFunction[noLatches - 3];
-    for (int i = 0; i < noLatches - 3; i++) {
+    int latchFunction[noLatches - 2];
+    for (int i = 0; i < noLatches - 2; i++) {
         latchFunction[i] = -1;
     }
     // we set the bit to 1 if it is 0, all less significant bits are 1,
@@ -368,9 +374,9 @@ void encodeTask(int notasks, int index, int deadline, int init,
     // the tick_tock clock is 0 or some less significant bit is not 1,
     // additionally the initialization is not yet done
     int rollingLSB = 1;
-    const int ticktockLatch = 2 + noInputs + noLatches - 3;
+    const int ticktockLatch = 2 + noInputs + noLatches - 2;
     const int initdLatch = 2 + noInputs + noLatches - 1;
-    for (int i = 0; i < noLatches - 3; i++) {
+    for (int i = 0; i < noLatches - 2; i++) {
         int latchvar = 2 + noInputs + i;
         int flip = and(&andGates, latchvar * -1,
                        and(&andGates, ticktockLatch, rollingLSB));
@@ -381,9 +387,9 @@ void encodeTask(int notasks, int index, int deadline, int init,
         rollingLSB = and(&andGates, rollingLSB, latchvar);
     }
     // 2.1: logic for the initialization latch
-    mask = 1;
+    int mask = 1;
     int isInitialized = 1;
-    for (int i = 0; i < noLatches - 3; i++) {
+    for (int i = 0; i < noLatches - 2; i++) {
         if ((init & mask) == mask)
             isInitialized = and(&andGates, isInitialized, latchFunction[i]);
         else
@@ -393,9 +399,8 @@ void encodeTask(int notasks, int index, int deadline, int init,
     // if it is initialized already, keep it that way
     isInitialized = or(&andGates, isInitialized, initdLatch);
     // 2.3: we update pre-init counter logic to guard the updated with this
-    for (int i = 0; i < noLatches - 3; i++) {
+    for (int i = 0; i < noLatches - 2; i++)
         latchFunction[i] = and(&andGates, latchFunction[i], isInitialized * -1);
-    }
 
     // Step 3: Arrival time counter logic
     // we set the bit to 1 if it is 0, all less significant bits are 1, the
@@ -403,23 +408,20 @@ void encodeTask(int notasks, int index, int deadline, int init,
     // either the tick_tock clock is 0 or some less significant bit is not 1
     // NOTE: this is all guarded by initialization and non-arrival
     int canArrive = -1;
-    for (int i = 0; i < noArrivalTimes; i++) {
-        int arrivalAllowed = 1;
-        mask = 1;
-        for (int j = noExecLatches; j < noExecLatches + noArrivalLatches; j++) {
-            int latchvar = 2 + noInputs + j;
-            if ((arrivaltimes[i] & mask) == mask)
-                arrivalAllowed = and(&andGates, arrivalAllowed, latchvar);
-            else
-                arrivalAllowed = and(&andGates, arrivalAllowed, latchvar * -1);
-            mask = mask << 1;
-        }
+    for (int i = 0; i < noArrivalTimes - 1; i++) {
+        int arrivalAllowed = getBin(&andGates, arrivaltimes[i] - 1,
+                                    2 + noInputs + noExecLatches,
+                                    2 + noInputs+ noExecLatches + noArrivalLatches);
         canArrive = or(&andGates, canArrive, arrivalAllowed);
     }
-    const int nextJobInput = noInputs - 1;
+    int mustArrive = getBin(&andGates, arrivaltimes[noArrivalTimes - 1] - 1,
+                            2 + noInputs + noExecLatches,
+                            2 + noInputs + noExecLatches + noArrivalLatches);
+    const int nextJobInput = 2 + noInputs - 1;
     int newJob = and(&andGates, canArrive, nextJobInput);
-    newJob = and(&andGates, newJob, ticktockLatch * -1);
-    int guard = and(&andGates, initdLatch, newJob * -1);
+    newJob = or(&andGates, newJob, mustArrive);
+    newJob = and(&andGates, newJob, ticktockLatch);
+    int guard = and(&andGates, isInitialized, newJob * -1);
     // the guard is ready, we can set up the counter logic now
     rollingLSB = 1;
     for (int i = noExecLatches; i < noExecLatches + noArrivalLatches; i++) {
@@ -436,42 +438,40 @@ void encodeTask(int notasks, int index, int deadline, int init,
 
     // Step 4: Execution time counter logic
     // we set the bit to 1 if it is 0, all less significant bits are 1, the
-    // tick_tock clock is set to 1, and the index is right; or if it is 1 and
-    // either the tick_tock clock is 0 or some less significant bit is not 1
-    // or if the index is not right; or everything is 1 already
-    // NOTE: this is all guarded by initialization, non-arrival
+    // tick_tock clock is set to 0, and the index is right; or if it is 1 and
+    // either the tick_tock clock is 1 or some less significant bit is not 1
+    // or if the index is not right; or everything is 1 already; or if
+    // execution terminates
+    // NOTE: this is all guarded by initialization and non-arrival
     // and non-termination
     int canTerminate = -1;
-    for (int i = 0; i < noExecTimes; i++) {
-        int termAllowed = 1;
-        mask = 1;
-        for (int j = 0; j < noExecLatches; j++) {
-            int latchvar = 2 + noInputs + j;
-            if ((exectimes[i] & mask) == mask)
-                termAllowed = and(&andGates, termAllowed, latchvar);
-            else
-                termAllowed = and(&andGates, termAllowed, latchvar * -1);
-            mask = mask << 1;
-        }
+    for (int i = 0; i < noExecTimes - 1; i++) {
+        int termAllowed = getBin(&andGates, exectimes[i],
+                                 2 + noInputs,
+                                 2 + noInputs + noExecLatches);
         canTerminate = or(&andGates, canTerminate, termAllowed);
     }
-    const int endExecInput = noInputs - 2;
+    int mustTerminate = getBin(&andGates, exectimes[noExecTimes - 1],
+                               2 + noInputs,
+                               2 + noInputs + noExecLatches);
+    const int endExecInput = 2 + noInputs - 2;
     int endExec = and(&andGates, canTerminate, endExecInput);
-    endExec = and(&andGates, endExec, ticktockLatch * -1);
-    guard = and(&andGates, guard, endExec * -1);
-    // the guard is ready, we can set up the counter logic now
+    endExec = or(&andGates, endExec, mustTerminate);
+    endExec = and(&andGates, endExec, ticktockLatch);
+    // the endExec flag will be used to set all bits to 1
     int allset = 1;
     for (int i = 0; i < noExecLatches; i++) {
         int latchvar = 2 + noInputs + i;
         allset = and(&andGates, allset, latchvar);
     }
+    allset = or(&andGates, allset, endExec);
     rollingLSB = 1;
     for (int i = 0; i < noExecLatches; i++) {
         int latchvar = 2 + noInputs + i;
         int flip = and(&andGates, latchvar * -1, taskScheduled);
         flip = and(&andGates, flip,
-                   and(&andGates, ticktockLatch, rollingLSB));
-        int keep = or(&andGates, ticktockLatch * -1,
+                   and(&andGates, ticktockLatch * -1, rollingLSB));
+        int keep = or(&andGates, ticktockLatch,
                       or(&andGates, taskScheduled * -1, rollingLSB * -1));
         keep = and(&andGates, latchvar, keep);
         latchFunction[i] = or(&andGates, latchFunction[i],
@@ -481,11 +481,19 @@ void encodeTask(int notasks, int index, int deadline, int init,
         rollingLSB = and(&andGates, rollingLSB, latchvar);
     }
 
+    // Step 5: Deadline check with execution timer
+    mask = 1;
+    int atDeadline = getBin(&andGates, deadline,
+                            2 + noInputs + noExecLatches,
+                            2 + noInputs + noExecLatches + noArrivalLatches);
+    int unsafe = and(&andGates, atDeadline, allset * -1);
+    unsafe = and(&andGates, unsafe, ticktockLatch);
+
 #ifndef NDEBUG
     recursivePrint(andGates.root, 0);
 #endif
 
-    // Step 5: Create and print the constructed AIG
+    // Step 6: Create and print the constructed AIG
     aiger* aig = aiger_init();
     // add inputs
     int lit = 2;
@@ -514,9 +522,6 @@ void encodeTask(int notasks, int index, int deadline, int init,
     // we add the latch to keep track of odd/even ticks
     aiger_add_latch(aig, lit, lit + 1, "tick_tock");
     lit += 2;
-    // we add the latch to remember whether the task was given CPU
-    aiger_add_latch(aig, lit, var2aiglit(taskScheduled), "task_scheduled");
-    lit += 2;
     // we add the latch to keep track of whether we are initialized
     aiger_add_latch(aig, lit, var2aiglit(isInitialized), "is_initialized");
     lit += 2;
@@ -526,22 +531,10 @@ void encodeTask(int notasks, int index, int deadline, int init,
     fprintf(stderr, "Dumping AND-gates into aiger structure\n");
 #endif
     dumpAiger(andGates.root, aig);
-/*
-    // add fairness constraint for the extra input
 
-    aiger_add_fairness(aig, var2aiglit(acceptState), "reset_safety_once");
-    // add justice constraints
-    safeResetLatch = noLatches - goodAccSets;
-    char justiceName[50];
-    for (int p = 1 - winRes; p < data->noAccSets; p += 2) {
-        int safeResetVar = 2 + noInputs + safeResetLatch;
-        unsigned justice[2] = {var2aiglit(-1 * safeResetVar),
-                               var2aiglit(acceptance[p])};
-        sprintf(justiceName, "priority_%d_untrumped", p);
-        aiger_add_justice(aig, 2, justice, justiceName);
-        safeResetLatch++;
-    }
-*/
+    // add bad state
+    aiger_add_output(aig, var2aiglit(unsafe), "missed_deadline");
+
 #ifndef NDEBUG
     fprintf(stderr, "AIG structure created, now checking it!\n");
     const char* msg = aiger_check(aig);
