@@ -118,16 +118,7 @@ def main():
     if completed.returncode != 0:
         print("An error occurred: {}".format(str(completed.stderr)))
         exit(completed.returncode)
-    f = open("preor.aag", "wb")
-    f.write(completed.stdout)
-    f.close()
-    print("To conclude, we take the disjunction of all outputs")
-    completed = subprocess.run(["./aigor", "preor.aag"],
-                               capture_output=True)
-    if completed.returncode != 0:
-        print("An error occurred: {}".format(str(completed.stderr)))
-        exit(completed.returncode)
-    f = open("tasks.aig", "wb")
+    f = open("tasks.aag", "wb")
     f.write(completed.stdout)
     f.close()
     exit(0)
