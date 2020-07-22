@@ -102,15 +102,32 @@ def main():
 
         # Call the aig encoder and save the aig to a temporary file
         completed = subprocess.run(["./task2aig"] + args, capture_output=True)
+        if completed.returncode != 0:
+            print("An error occurred: {}".format(str(completed.stderr)))
+            exit(completed.returncode)
         f = open("temp{}.aag".format(i), "wb")
         f.write(completed.stdout)
         f.close()
         i += 1
-    print("We now have an AIGER for each task, we will now join them")
-    temp_files = ["temp{}.aag" for i in range(1, len(hard_tasks))]
-    completed = subprocess.run(["./aigjoin"] + temp_files,
+    temp_files = ["temp{}.aag".format(i)
+                  for i in range(1, len(hard_tasks) + 1)]
+    print("We now have an AIGER for each task")
+    print("Joining the files: {}".format(", ".join(temp_files)))
+    completed = subprocess.run(["./aigprod"] + temp_files,
                                capture_output=True)
+    if completed.returncode != 0:
+        print("An error occurred: {}".format(str(completed.stderr)))
+        exit(completed.returncode)
     f = open("preor.aag", "wb")
+    f.write(completed.stdout)
+    f.close()
+    print("To conclude, we take the disjunction of all outputs")
+    completed = subprocess.run(["./aigor", "preor.aag"],
+                               capture_output=True)
+    if completed.returncode != 0:
+        print("An error occurred: {}".format(str(completed.stderr)))
+        exit(completed.returncode)
+    f = open("tasks.aig", "wb")
     f.write(completed.stdout)
     f.close()
     exit(0)

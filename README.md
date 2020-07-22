@@ -24,4 +24,4 @@ equivalent AIGER representation. The main design choices are summarized below.
 
 ## Python script
 If you are using the Python script to create an AIG for a system of several
-tasks then you will need aigjoin and aigor from A. Biere's aiger tools.
+tasks then you will need aigor from A. Biere's aiger tools.
