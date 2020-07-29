@@ -81,10 +81,8 @@ def get_tasks(file_name):
     return hard_tasks, soft_tasks
 
 
-def main():
-    file_name = sys.argv[1]
-    file_name = file_name.strip()
-    hard_tasks, soft_tasks = get_tasks(file_name)
+def encode(file_name):
+    hard_tasks, _ = get_tasks(file_name)
     # hard_tasks and soft_tasks are a list of task descriptions:
     # [arrival, exe dist, deadline, period dist, max_exe_time, min_arrive_time]
     print("Found {} hard tasks".format(len(hard_tasks)))
@@ -104,7 +102,7 @@ def main():
         completed = subprocess.run(["./task2aig"] + args, capture_output=True)
         if completed.returncode != 0:
             print("An error occurred: {}".format(str(completed.stderr)))
-            exit(completed.returncode)
+            return completed.returncode
         f = open("temp{}.aag".format(i), "wb")
         f.write(completed.stdout)
         f.close()
@@ -117,11 +115,20 @@ def main():
                                capture_output=True)
     if completed.returncode != 0:
         print("An error occurred: {}".format(str(completed.stderr)))
-        exit(completed.returncode)
+        return completed.returncode
     f = open("tasks.aag", "wb")
     f.write(completed.stdout)
     f.close()
-    exit(0)
+
+
+def main():
+    if len(sys.argv) != 2:
+        print("Expected a task-system file name as unique argument")
+        exit(1)
+    else:
+        file_name = sys.argv[1]
+        file_name = file_name.strip()
+        exit(encode(file_name))
 
 
 if __name__ == "__main__":

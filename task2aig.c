@@ -338,7 +338,7 @@ void encodeTask(int notasks, int index, int deadline, int init,
 
     // We need to reserve a few variables though
     // (1) one per controllable input + 2 uncontrollable inputs
-    // (2) one per latch needed for the counters + 3 helpers
+    // (2) one per latch needed for the counters + 2 helpers
     // we need floor(lg(notasks)) + 1 just for controllable inputs,
     // where lg is the logarithm base 2; but C only has
     // natural logarithms
@@ -353,7 +353,7 @@ void encodeTask(int notasks, int index, int deadline, int init,
     int noLatches = noExecLatches + noArrivalLatches + 2;
     andGates.nextVar += noLatches;
     // we will be using all counter latches for the initialization countdown
-    assert((int) (log(init)/ log(2.0)) + 1 <= noLatches);
+    assert((int) (log(init) / log(2.0)) + 1 <= noLatches);
 #ifndef NDEBUG
     fprintf(stderr, "Reserved %d inputs\n", noInputs);
     fprintf(stderr, "Reserved %d latches\n", noLatches);
@@ -495,6 +495,7 @@ void encodeTask(int notasks, int index, int deadline, int init,
 
     // Step 6: Create and print the constructed AIG
     aiger* aig = aiger_init();
+
     // add inputs
     int lit = 2;
     char name[50];
