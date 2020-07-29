@@ -200,9 +200,6 @@ def aiger_coi(arg1):
 def aiger_read_from_file(arg1, arg2):
     return _aiger_wrap.aiger_read_from_file(arg1, arg2)
 
-def aiger_read_from_string(arg1, str):
-    return _aiger_wrap.aiger_read_from_string(arg1, str)
-
 def aiger_read_generic(arg1, state, arg3):
     return _aiger_wrap.aiger_read_generic(arg1, state, arg3)
 

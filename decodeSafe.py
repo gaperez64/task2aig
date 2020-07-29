@@ -1,128 +1,43 @@
 #!/usr/bin/env python3
 
 import sys
-import subprocess
-from fractions import Fraction
-from decimal import Decimal
+
+from aiger.aiger_wrap import (
+    aiger_init,
+    aiger_open_and_read_from_file,
+    aiger_reset,
+    get_aiger_symbol,
+)
 
 
-def get_tasks(file_name):
-    f = open(file_name, "r")
+class AIG(object):
+    def iterate_inputs(self):
+        for i in range(int(self.spec.num_inputs)):
+            yield get_aiger_symbol(self.spec.inputs, i)
 
-    # readlines reads the individual line into a list
-    fl = f.readlines()
-    lines = []
-    tasks = []
-    hard_tasks = []
-    soft_tasks = []
-    has_soft_tasks = False
+    def iterate_latches(self):
+        for i in range(int(self.spec.num_latches)):
+            yield get_aiger_symbol(self.spec.latches, i)
 
-    f.close()
+    def __init__(self, aiger_file_name):
+        self.spec = aiger_init()
+        err = aiger_open_and_read_from_file(self.spec, aiger_file_name)
+        if err:
+            print("Error: {}".format(err))
+        latches = [x.lit for x in self.iterate_latches()]
+        print("{} Latches: {}".format(str(len(latches)), str(latches)))
+        inputs = [x.lit for x in self.iterate_inputs()]
+        print("{} Inputs: {}".format(str(len(inputs)), str(inputs)))
 
-    # for each line, extract the task parameters
-
-    for x in fl:
-        y = x.strip()
-
-        if y[0] == '-':
-            hard_tasks = tasks
-            tasks = []
-            has_soft_tasks = True
-
-        elif y != '' and y[0] != '#':
-            lines.append(y)
-            task = y.split("|")  # task should have 4 elements
-
-            arrival = int(task[0])
-
-            dist = task[1].split(";")  # distribution on the execution time
-            exe = []
-            max_exe_time = 0
-            for z in dist:
-                z = z.strip("[")
-                z = z.strip("]")
-                z = z.split(",")
-                time = int(z[0])
-
-                if time > max_exe_time:  # compute maximum execution time
-                    max_exe_time = time
-
-                exe.append((time, Fraction(Decimal(z[1]))))
-
-            deadline = int(task[2])
-
-            dist = task[3].split(";")  # distribution on the period
-            period = []
-            arrive_time = []
-            for z in dist:
-                z = z.strip("[")
-                z = z.strip("]")
-                z = z.split(",")
-                time = int(z[0])
-                period.append((time, Fraction(Decimal(z[1]))))
-
-                arrive_time.append(time)
-
-            min_arrive_time = min(arrive_time)
-
-            if has_soft_tasks:
-                cost = Fraction(Decimal(task[4]))
-                tasks.append([arrival, exe, deadline, period,
-                              max_exe_time, min_arrive_time, cost])
-            else:
-                tasks.append([arrival, exe, deadline, period,
-                              max_exe_time, min_arrive_time])
-
-    if has_soft_tasks:
-        soft_tasks = tasks
-    else:
-        hard_tasks = tasks
-
-    return hard_tasks, soft_tasks
-
-
-def main():
-    file_name = sys.argv[1]
-    file_name = file_name.strip()
-    hard_tasks, soft_tasks = get_tasks(file_name)
-    # hard_tasks and soft_tasks are a list of task descriptions:
-    # [arrival, exe dist, deadline, period dist, max_exe_time, min_arrive_time]
-    print("Found {} hard tasks".format(len(hard_tasks)))
-    print("Proceeding to encode them into AIGER")
-    i = 1
-    for (init_arrival, exe_dist, deadline, period_dist, _, _) in hard_tasks:
-        exec_times = sorted([x for (x, _) in exe_dist])
-        arrival_times = sorted([x for (x, _) in period_dist])
-        args = [len(hard_tasks), i, deadline,
-                init_arrival, exec_times[-1],
-                arrival_times[-1]]
-        extra_exec = ["-e {}".format(e) for e in exec_times[:-1]]
-        extra_arrival = ["-a {}".format(a) for a in arrival_times[:-1]]
-        args = [str(a) for a in extra_exec + extra_arrival + args]
-
-        # Call the aig encoder and save the aig to a temporary file
-        completed = subprocess.run(["./task2aig"] + args, capture_output=True)
-        if completed.returncode != 0:
-            print("An error occurred: {}".format(str(completed.stderr)))
-            exit(completed.returncode)
-        f = open("temp{}.aag".format(i), "wb")
-        f.write(completed.stdout)
-        f.close()
-        i += 1
-    temp_files = ["temp{}.aag".format(i)
-                  for i in range(1, len(hard_tasks) + 1)]
-    print("We now have an AIGER for each task")
-    print("Joining the files: {}".format(", ".join(temp_files)))
-    completed = subprocess.run(["./aigprod"] + temp_files,
-                               capture_output=True)
-    if completed.returncode != 0:
-        print("An error occurred: {}".format(str(completed.stderr)))
-        exit(completed.returncode)
-    f = open("tasks.aag", "wb")
-    f.write(completed.stdout)
-    f.close()
-    exit(0)
+    def __del__(self):
+        if self.spec:
+            aiger_reset(self.spec)
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) != 2:
+        print("Expected an AIG file name as unique argument")
+        exit(1)
+    else:
+        AIG(sys.argv[1])
+        exit(0)

@@ -5476,39 +5476,6 @@ fail:
 }
 
 
-SWIGINTERN PyObject *_wrap_aiger_read_from_string(PyObject *SWIGUNUSEDPARM(self), PyObject *args) {
-  PyObject *resultobj = 0;
-  aiger *arg1 = (aiger *) 0 ;
-  char *arg2 = (char *) 0 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  int res2 ;
-  char *buf2 = 0 ;
-  int alloc2 = 0 ;
-  PyObject *swig_obj[2] ;
-  char *result = 0 ;
-  
-  if (!SWIG_Python_UnpackTuple(args, "aiger_read_from_string", 2, 2, swig_obj)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(swig_obj[0], &argp1,SWIGTYPE_p_aiger, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "aiger_read_from_string" "', argument " "1"" of type '" "aiger *""'"); 
-  }
-  arg1 = (aiger *)(argp1);
-  res2 = SWIG_AsCharPtrAndSize(swig_obj[1], &buf2, NULL, &alloc2);
-  if (!SWIG_IsOK(res2)) {
-    SWIG_exception_fail(SWIG_ArgError(res2), "in method '" "aiger_read_from_string" "', argument " "2"" of type '" "char const *""'");
-  }
-  arg2 = (char *)(buf2);
-  result = (char *)aiger_read_from_string(arg1,(char const *)arg2);
-  resultobj = SWIG_FromCharPtr((const char *)result);
-  if (alloc2 == SWIG_NEWOBJ) free((char*)buf2);
-  return resultobj;
-fail:
-  if (alloc2 == SWIG_NEWOBJ) free((char*)buf2);
-  return NULL;
-}
-
-
 SWIGINTERN PyObject *_wrap_aiger_read_generic(PyObject *SWIGUNUSEDPARM(self), PyObject *args) {
   PyObject *resultobj = 0;
   aiger *arg1 = (aiger *) 0 ;
@@ -5955,7 +5922,6 @@ static PyMethodDef SwigMethods[] = {
 	 { "aiger_reencode", _wrap_aiger_reencode, METH_O, NULL},
 	 { "aiger_coi", _wrap_aiger_coi, METH_O, NULL},
 	 { "aiger_read_from_file", _wrap_aiger_read_from_file, METH_VARARGS, NULL},
-	 { "aiger_read_from_string", _wrap_aiger_read_from_string, METH_VARARGS, NULL},
 	 { "aiger_read_generic", _wrap_aiger_read_generic, METH_VARARGS, NULL},
 	 { "aiger_error", _wrap_aiger_error, METH_O, NULL},
 	 { "aiger_open_and_read_from_file", _wrap_aiger_open_and_read_from_file, METH_VARARGS, NULL},
