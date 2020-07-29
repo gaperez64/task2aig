@@ -21,7 +21,3 @@ equivalent AIGER representation. The main design choices are summarized below.
 * Possible inter-arrival times (list of integers)
 * Deadline
 * Initial arrival time
-
-## Python script
-If you are using the Python script to create an AIG for a system of several
-tasks then you will need aigjoin and aigor from A. Biere's aiger tools.

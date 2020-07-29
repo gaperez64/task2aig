@@ -552,7 +552,7 @@ void encodeTask(int notasks, int index, int deadline, int init,
     return;
 }
 
-void printHelp() {
+static void printHelp() {
     fprintf(stderr, "Usage: task2aig [OPTIONS]... TOTTASKS TASKINDEX DEADLINE "
                     "INITARRIVAL MAXEXECTIME MAXARRIVALTIME\n");
     fprintf(stderr, "Create an AIG for a deterministic task system.\n");
