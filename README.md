@@ -21,3 +21,19 @@ equivalent AIGER representation. The main design choices are summarized below.
 * Possible inter-arrival times (list of integers)
 * Deadline
 * Initial arrival time
+
+# Encoding task systems with Python
+There are two Python scripts provided to generate an AIG for your task systems
+and to read the resulting safe region from an AIG.
+
+## encodeTasks
+This reads a task system from a file in the format proposed by S. Guha and
+uses task2aig to generate the AIG input file.
+
+## decodeSafe
+If you are reading the safe region of the system encoded as an AIG, and you
+plan on using the provided scripts, then you will need to make/build the 
+SWIG interface for Python and C in the aiger subdirectory. There is a Makefile
+in the subdirectory for your convenience. The safe region is assumed to be
+encoded as an AIG for which all latches are inputs and a single output signals
+whether the latch configuration is safe.

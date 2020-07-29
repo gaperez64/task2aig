@@ -7,7 +7,7 @@ setup.py file for aiger
 from distutils.core import setup, Extension
 
 
-aiger_module = Extension("_aiger", sources=["aiger_wrap.c", "aiger.c"])
+aiger_module = Extension("_aiger_wrap", sources=["aiger_wrap.c", "aiger.c"])
 
 setup(name="aiger",
       version="1.0",
