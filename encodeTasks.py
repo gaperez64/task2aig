@@ -99,7 +99,9 @@ def encode(file_name):
         args = [str(a) for a in extra_exec + extra_arrival + args]
 
         # Call the aig encoder and save the aig to a temporary file
-        completed = subprocess.run(["./task2aig"] + args, capture_output=True)
+        completed = subprocess.run(["./task2aig"] + args,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE)
         if completed.returncode != 0:
             print("An error occurred: {}".format(str(completed.stderr)))
             return completed.returncode
@@ -112,7 +114,8 @@ def encode(file_name):
     print("We now have an AIGER for each task")
     print("Joining the files: {}".format(", ".join(temp_files)))
     completed = subprocess.run(["./aigprod"] + temp_files,
-                               capture_output=True)
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE)
     if completed.returncode != 0:
         print("An error occurred: {}".format(str(completed.stderr)))
         return completed.returncode
