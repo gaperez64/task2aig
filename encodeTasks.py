@@ -112,13 +112,14 @@ def encode(file_name):
     temp_files = ["temp{}.aag".format(i)
                   for i in range(1, len(hard_tasks) + 1)]
     print("We now have an AIGER for each task")
-    print("Joining the files: {}".format(", ".join(temp_files)))
-    completed = subprocess.run(["./aigprod"] + temp_files,
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE)
-    if completed.returncode != 0:
-        print("An error occurred: {}".format(str(completed.stderr)))
-        return completed.returncode
+    if len(temp_files) > 1:
+        print("Joining the files: {}".format(", ".join(temp_files)))
+        completed = subprocess.run(["./aigprod"] + temp_files,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE)
+        if completed.returncode != 0:
+            print("An error occurred: {}".format(str(completed.stderr)))
+            return completed.returncode
     f = open("tasks.aag", "wb")
     f.write(completed.stdout)
     f.close()
