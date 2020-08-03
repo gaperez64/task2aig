@@ -74,7 +74,7 @@ class AIG(object):
             "Exec and maximal exec times differ"
         exec_latches = [math.floor(math.log(m, 2)) + 1
                         for m in max_exec_times]
-        arrival_latches = [math.floor(math.log(m - 1, 2)) + 1
+        arrival_latches = [math.floor(math.log(m, 2)) + 1
                            for m in max_arrival_times]
         no_latches = sum(exec_latches) + sum(arrival_latches)
         aig_latches = self.aig.num_inputs - (2 * len(exec_times))
@@ -91,11 +91,14 @@ class AIG(object):
         bit_strings = []
         for i in range(len(exec_times)):
             s = "11"
+            print(str(arrival_latches[i]))
             s += ("{0:0" + str(arrival_latches[i]) +
                   "b}").format(upd_arrival_times[i])
+            print(str(exec_latches[i]))
             s += ("{0:0" + str(exec_latches[i]) +
                   "b}").format(upd_exec_times[i])
             bit_strings.append(s)
+        print(str(bit_strings))
         valuation = "".join([s[::-1] for s in bit_strings])
         assert self.aig.num_inputs == len(valuation),\
             "{} inputs and {} computed values".format(
@@ -120,7 +123,7 @@ def main():
         exit(1)
     else:
         aig = AIG(sys.argv[1])
-        exit(aig.decode([0, 1, 3], [8, 6, 10], [2, 2, 3], [9, 10, 12], 2))
+        exit(aig.decode([2, 2], [7, 7], [2, 2], [9, 8], 0))
 
 
 if __name__ == "__main__":

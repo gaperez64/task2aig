@@ -120,6 +120,8 @@ def encode(file_name):
         if completed.returncode != 0:
             print("An error occurred: {}".format(str(completed.stderr)))
             return completed.returncode
+    else:
+        print("Skipped joining step because it's a single task")
     f = open("tasks.aag", "wb")
     f.write(completed.stdout)
     f.close()

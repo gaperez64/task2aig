@@ -347,9 +347,7 @@ void encodeTask(int notasks, int index, int deadline, int init,
     andGates.nextVar += noInputs;
     // we will also have 2 counters encoded in binary and 2 helper latches
     int noExecLatches = (int) (log(exectimes[noExecTimes - 1]) / log(2.0)) + 1;
-    // arrival times are never fully counted (i.e. the counter stays strictly
-    // below the max) so we try to reduce latches using that fact
-    int noArrivalLatches = (int) (log(arrivaltimes[noArrivalTimes - 1] - 1) / log(2.0)) + 1;
+    int noArrivalLatches = (int) (log(arrivaltimes[noArrivalTimes - 1]) / log(2.0)) + 1;
     int noLatches = noExecLatches + noArrivalLatches + 2;
     andGates.nextVar += noLatches;
     // we will be using all counter latches for the initialization countdown
@@ -414,7 +412,7 @@ void encodeTask(int notasks, int index, int deadline, int init,
                                     2 + noInputs+ noExecLatches + noArrivalLatches);
         canArrive = or(&andGates, canArrive, arrivalAllowed);
     }
-    int mustArrive = getBin(&andGates, arrivaltimes[noArrivalTimes - 1] - 1,
+    int mustArrive = getBin(&andGates, arrivaltimes[noArrivalTimes - 1],
                             2 + noInputs + noExecLatches,
                             2 + noInputs + noExecLatches + noArrivalLatches);
     const int nextJobInput = 2 + noInputs - 1;
