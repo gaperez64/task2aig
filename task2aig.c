@@ -552,6 +552,9 @@ void encodeTask(int notasks, int index, int deadline, int init,
 }
 
 static void printHelp() {
+#ifdef GITVER
+    fprintf(stderr, "task2aig version: %s\n", GITVER);
+#endif
     fprintf(stderr, "Usage: task2aig [OPTIONS]... TOTTASKS TASKINDEX DEADLINE "
                     "INITARRIVAL MAXEXECTIME MAXARRIVALTIME\n");
     fprintf(stderr, "Create an AIG for a deterministic task system.\n");

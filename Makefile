@@ -1,6 +1,7 @@
 CC = clang
 
-CFLAGS = -O3 -DNDEBUG
+GITVER = $(shell git describe --tags)
+CFLAGS = -O3 -DNDEBUG -DGITVER=\"$(GITVER)\"
 DBGFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 
 task2aig: task2aig.c aiger/aiger.c aiger/aiger.h
@@ -12,6 +13,7 @@ aigprod: aigprod.c aiger/aiger.c aiger/aiger.h
 .PHONY: clean all
 
 all: task2aig aigprod
+	cd aiger && $(MAKE) all
 
 clean:
 	rm -f task2aig

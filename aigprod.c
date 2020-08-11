@@ -27,6 +27,9 @@
 #include "aiger/aiger.h"
 
 static void printHelp() {
+#ifdef GITVER
+    fprintf(stderr, "aigprod version: %s\n", GITVER);
+#endif
     fprintf(stderr, "Usage: aigprod INPUTFILES...\n");
     fprintf(stderr, "Create the product of AIGs with common inputs.\n");
     return;
