@@ -91,14 +91,11 @@ class AIG(object):
         bit_strings = []
         for i in range(len(exec_times)):
             s = "11"
-            print(str(arrival_latches[i]))
             s += ("{0:0" + str(arrival_latches[i]) +
                   "b}").format(upd_arrival_times[i])
-            print(str(exec_latches[i]))
             s += ("{0:0" + str(exec_latches[i]) +
                   "b}").format(upd_exec_times[i])
             bit_strings.append(s)
-        print(str(bit_strings))
         valuation = "".join([s[::-1] for s in bit_strings])
         assert self.aig.num_inputs == len(valuation),\
             "{} inputs and {} computed values".format(
