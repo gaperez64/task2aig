@@ -34,6 +34,8 @@ uses task2aig to generate the AIG input file.
 If you are reading the safe region of the system encoded as an AIG, and you
 plan on using the provided scripts, then you will need to make/build the 
 SWIG interface for Python and C in the aiger subdirectory. There is a Makefile
-in the subdirectory for your convenience. The safe region is assumed to be
+in the subdirectory for your convenience. (We recommend that you change python
+to python3 everywhere in Makefile if you are working with a 2.x version of
+python as your default.) The safe region is assumed to be
 encoded as an AIG for which all latches are inputs and a single output signals
 whether the latch configuration is safe.
